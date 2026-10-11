@@ -53,10 +53,24 @@
         <header class="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 rounded-2xl shadow-lg p-6 text-white text-center relative overflow-hidden">
             <div class="relative z-10">
                 <span class="inline-flex items-center gap-1.5 px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-medium tracking-wide mb-2 text-emerald-50">
-                    <i class="fa-solid fa-calculator text-xs"></i> Hitung Cepat & Otomatis
+                    <i class="fa-solid fa-cloud-arrow-up text-xs"></i> Tersimpan Otomatis & Aman
                 </span>
                 <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight">Daftar Belanja Cerdas</h1>
-                <p class="text-emerald-100 text-sm mt-1">Kelola belanjaan, hitung anggaran, dan pantau pengeluaran</p>
+                <p class="text-emerald-100 text-sm mt-1">Data Anda tersimpan langsung sehingga tidak hilang saat ditutup</p>
+                
+                <!-- Status Sinkronisasi Akun -->
+                <div class="mt-4 pt-3 border-t border-white/15 flex flex-wrap items-center justify-center gap-2 text-[11px] text-emerald-100">
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-black/20 rounded-lg">
+                        <span id="sync-indicator" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <span id="sync-status">Menghubungkan ke penyimpanan...</span>
+                    </span>
+                    <button type="button" id="btn-copy-user-id" title="Salin ID Akun"
+                        class="inline-flex items-center gap-1 px-2.5 py-1 bg-white/10 hover:bg-white/20 active:scale-95 transition-all rounded-lg text-white font-mono cursor-pointer">
+                        <i class="fa-solid fa-fingerprint"></i>
+                        <span id="user-id-display">Memuat ID...</span>
+                        <i class="fa-regular fa-copy ml-0.5 text-[10px]"></i>
+                    </button>
+                </div>
             </div>
             <!-- Dekorasi latar belakang header -->
             <div class="absolute -right-6 -bottom-8 w-28 h-28 bg-white/10 rounded-full blur-xl pointer-events-none"></div>
@@ -124,11 +138,11 @@
                             <input type="number" id="item-price" required min="0" step="any" placeholder="0" 
                                 class="w-full pl-10 pr-4 py-2.5 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all">
                         </div>
-                        <p class="text-[11px] text-slate-400 mt-1">Bebas nominal berapa pun (ketik angka saja tanpa titik ribuan).</p>
+                        <p class="text-[11px] text-slate-400 mt-1">Bebas nominal angka berapa pun.</p>
                     </div>
                 </div>
 
-                <button type="submit" 
+                <button type="submit" id="submit-btn"
                     class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl shadow-md shadow-emerald-600/20 active:scale-[0.99] transition-all flex items-center justify-center gap-2">
                     <i class="fa-solid fa-cart-plus"></i> Masukkan ke Daftar
                 </button>
@@ -173,7 +187,7 @@
             </div>
             <h3 class="font-bold text-slate-700 text-base mb-1">Daftar Belanja Masih Kosong</h3>
             <p class="text-xs text-slate-400 max-w-xs mx-auto mb-4">Tambahkan barang belanjaan Anda di atas atau klik tombol Contoh untuk melihat kalkulasi.</p>
-            <button type="button" onclick="loadSampleData()" class="px-4 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-semibold transition-colors">
+            <button type="button" id="btn-empty-sample" class="px-4 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-semibold transition-colors">
                 <i class="fa-solid fa-file-invoice"></i> Muat Data Contoh
             </button>
         </div>
@@ -242,19 +256,30 @@
         <span id="toast-message">Pesan notifikasi</span>
     </div>
 
-    <script>
-        // Data Contoh Awal agar aplikasi langsung menampilkan data & kalkulasi jika dibuka pertama kali
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Konfigurasi & Inisialisasi Firebase
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'kalkulator-belanja-app';
+        let db = null;
+        let auth = null;
+        let currentUser = null;
+        let userId = null;
+
+        // Data Contoh Awal
         const DEFAULT_SAMPLE_ITEMS = [
-            { id: 1, name: 'Beras Premium 5kg', qty: 1, price: 74000, isBought: true },
-            { id: 2, name: 'Minyak Goreng 2L', qty: 2, price: 34000, isBought: true },
-            { id: 3, name: 'Telur Ayam 1kg', qty: 1, price: 29000, isBought: false },
-            { id: 4, name: 'Bumbu Dapur Lengkap', qty: 3, price: 5000, isBought: false }
+            { name: 'Beras Premium 5kg', qty: 1, price: 74000, isBought: true },
+            { name: 'Minyak Goreng 2L', qty: 2, price: 34000, isBought: true },
+            { name: 'Telur Ayam 1kg', qty: 1, price: 29000, isBought: false },
+            { name: 'Bumbu Dapur Lengkap', qty: 3, price: 5000, isBought: false }
         ];
 
         // State Aplikasi
         let shoppingItems = [];
-        let budgetLimit = 200000; // Standar target anggaran
-        let activeFilter = 'all'; // 'all', 'pending', 'done'
+        let budgetLimit = 200000;
+        let activeFilter = 'all';
 
         // DOM Elements
         const form = document.getElementById('item-form');
@@ -283,6 +308,12 @@
         const filterAllCount = document.getElementById('filter-all-count');
         const filterPendingCount = document.getElementById('filter-pending-count');
         const filterDoneCount = document.getElementById('filter-done-count');
+
+        // Cloud Status DOM
+        const syncStatus = document.getElementById('sync-status');
+        const syncIndicator = document.getElementById('sync-indicator');
+        const userIdDisplay = document.getElementById('user-id-display');
+        const btnCopyUserId = document.getElementById('btn-copy-user-id');
 
         // Utility: Format Rupiah rapi
         function formatRupiah(value) {
@@ -315,13 +346,30 @@
             }, 2500);
         }
 
-        // Simpan ke LocalStorage
-        function saveData() {
-            localStorage.setItem('shopping_list_items', JSON.stringify(shoppingItems));
-            localStorage.setItem('shopping_list_budget', budgetLimit);
+        // Salin ID Pengguna
+        btnCopyUserId.addEventListener('click', () => {
+            if (!userId) return;
+            const tempInput = document.createElement('textarea');
+            tempInput.value = userId;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+            showToast('ID Akun disalin ke papan klip!');
+        });
+
+        // Utility pencegah XSS sederhana
+        function escapeHTML(str) {
+            return String(str).replace(/[&<>'"]/g, tag => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                "'": '&#39;',
+                '"': '&quot;'
+            }[tag] || tag));
         }
 
-        // Render keseluruhan daftar dan kalkulasi
+        // Render keseluruhan tampilan dan kalkulasi
         function render() {
             // Filter barang yang sesuai
             const filteredItems = shoppingItems.filter(item => {
@@ -332,12 +380,12 @@
 
             // Hitung kalkulasi
             const totalItemsCount = shoppingItems.length;
-            const totalUnitsCount = shoppingItems.reduce((acc, item) => acc + Number(item.qty), 0);
-            const grandTotal = shoppingItems.reduce((acc, item) => acc + (Number(item.qty) * Number(item.price)), 0);
+            const totalUnitsCount = shoppingItems.reduce((acc, item) => acc + Number(item.qty || 0), 0);
+            const grandTotal = shoppingItems.reduce((acc, item) => acc + (Number(item.qty || 0) * Number(item.price || 0)), 0);
             
             const totalBought = shoppingItems
                 .filter(i => i.isBought)
-                .reduce((acc, item) => acc + (Number(item.qty) * Number(item.price)), 0);
+                .reduce((acc, item) => acc + (Number(item.qty || 0) * Number(item.price || 0)), 0);
                 
             const totalUnbought = grandTotal - totalBought;
 
@@ -355,7 +403,7 @@
             } else {
                 emptyState.classList.add('hidden');
                 filteredItems.forEach(item => {
-                    const subtotal = item.qty * item.price;
+                    const subtotal = Number(item.qty || 0) * Number(item.price || 0);
                     const card = document.createElement('div');
                     card.className = `anim-fade-in bg-white rounded-2xl border p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all ${
                         item.isBought ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 hover:border-slate-300'
@@ -365,8 +413,8 @@
                         <div class="flex items-start sm:items-center gap-3 flex-1 min-w-0">
                             <!-- Checkbox Dibeli -->
                             <input type="checkbox" ${item.isBought ? 'checked' : ''} 
-                                onchange="toggleBought(${item.id})"
-                                class="w-5 h-5 mt-1 sm:mt-0 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-emerald-600">
+                                data-id="${item.id}"
+                                class="item-checkbox w-5 h-5 mt-1 sm:mt-0 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-emerald-600">
 
                             <!-- Info Barang -->
                             <div class="flex-1 min-w-0">
@@ -387,21 +435,20 @@
                         <div class="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                             <!-- Pengatur Jumlah (- dan +) -->
                             <div class="flex items-center bg-slate-100 rounded-xl p-1 border border-slate-200">
-                                <button type="button" onclick="adjustQty(${item.id}, -1)" 
-                                    class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white text-slate-600 hover:shadow-xs transition-all active:scale-90 font-bold">
+                                <button type="button" data-id="${item.id}" data-delta="-1" 
+                                    class="btn-qty w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white text-slate-600 hover:shadow-xs transition-all active:scale-90 font-bold">
                                     <i class="fa-solid fa-minus text-xs"></i>
                                 </button>
                                 <span class="w-8 text-center font-bold text-xs text-slate-800">${item.qty}</span>
-                                <button type="button" onclick="adjustQty(${item.id}, 1)" 
-                                    class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white text-slate-600 hover:shadow-xs transition-all active:scale-90 font-bold">
+                                <button type="button" data-id="${item.id}" data-delta="1" 
+                                    class="btn-qty w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white text-slate-600 hover:shadow-xs transition-all active:scale-90 font-bold">
                                     <i class="fa-solid fa-plus text-xs"></i>
                                 </button>
                             </div>
 
                             <!-- Tombol Hapus -->
-                            <button type="button" onclick="deleteItem(${item.id})" 
-                                title="Hapus Barang"
-                                class="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors">
+                            <button type="button" data-id="${item.id}" title="Hapus Barang"
+                                class="btn-delete w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors">
                                 <i class="fa-solid fa-trash-can text-sm"></i>
                             </button>
                         </div>
@@ -419,55 +466,95 @@
 
             // Perbarui Progress & Sisa Anggaran
             updateBudgetCalculations(grandTotal);
-            saveData();
         }
 
-        // Utility pencegah XSS sederhana
-        function escapeHTML(str) {
-            return str.replace(/[&<>'"]/g, tag => ({
-                '&': '&amp;',
-                '<': '&lt;',
-                '>': '&gt;',
-                "'": '&#39;',
-                '"': '&quot;'
-            }[tag] || tag));
-        }
+        // Event delegation untuk list barang
+        shoppingListContainer.addEventListener('click', async (e) => {
+            const qtyBtn = e.target.closest('.btn-qty');
+            if (qtyBtn) {
+                const id = qtyBtn.getAttribute('data-id');
+                const delta = parseInt(qtyBtn.getAttribute('data-delta'), 10);
+                await adjustQty(id, delta);
+                return;
+            }
+
+            const delBtn = e.target.closest('.btn-delete');
+            if (delBtn) {
+                const id = delBtn.getAttribute('data-id');
+                await deleteItem(id);
+                return;
+            }
+        });
+
+        shoppingListContainer.addEventListener('change', async (e) => {
+            const checkbox = e.target.closest('.item-checkbox');
+            if (checkbox) {
+                const id = checkbox.getAttribute('data-id');
+                await toggleBought(id);
+            }
+        });
 
         // Ubah Qty barang
-        window.adjustQty = function(id, delta) {
-            const item = shoppingItems.find(i => i.id === id);
+        async function adjustQty(id, delta) {
+            const item = shoppingItems.find(i => String(i.id) === String(id));
             if (!item) return;
 
-            const newQty = item.qty + delta;
+            const newQty = (item.qty || 1) + delta;
             if (newQty <= 0) {
-                // Konfirmasi hapus jika turun ke 0
-                shoppingItems = shoppingItems.filter(i => i.id !== id);
-                showToast(`"${item.name}" dihapus`);
+                await deleteItem(id);
             } else {
-                item.qty = newQty;
+                if (db && currentUser) {
+                    try {
+                        const itemRef = doc(db, 'artifacts', appId, 'users', userId, 'shopping_items', String(id));
+                        await updateDoc(itemRef, { qty: newQty });
+                    } catch (err) {
+                        console.error("Gagal update qty:", err);
+                    }
+                } else {
+                    item.qty = newQty;
+                    render();
+                }
             }
-            render();
-        };
+        }
 
         // Toggle status barang sudah dibeli
-        window.toggleBought = function(id) {
-            const item = shoppingItems.find(i => i.id === id);
-            if (item) {
+        async function toggleBought(id) {
+            const item = shoppingItems.find(i => String(i.id) === String(id));
+            if (!item) return;
+
+            if (db && currentUser) {
+                try {
+                    const itemRef = doc(db, 'artifacts', appId, 'users', userId, 'shopping_items', String(id));
+                    await updateDoc(itemRef, { isBought: !item.isBought });
+                } catch (err) {
+                    console.error("Gagal toggle status:", err);
+                }
+            } else {
                 item.isBought = !item.isBought;
                 render();
             }
-        };
+        }
 
         // Hapus satu barang
-        window.deleteItem = function(id) {
-            const item = shoppingItems.find(i => i.id === id);
-            shoppingItems = shoppingItems.filter(i => i.id !== id);
-            render();
-            if (item) showToast(`"${item.name}" dihapus dari daftar`);
-        };
+        async function deleteItem(id) {
+            const item = shoppingItems.find(i => String(i.id) === String(id));
+            if (db && currentUser) {
+                try {
+                    const itemRef = doc(db, 'artifacts', appId, 'users', userId, 'shopping_items', String(id));
+                    await deleteDoc(itemRef);
+                    if (item) showToast(`"${item.name}" dihapus`);
+                } catch (err) {
+                    console.error("Gagal menghapus:", err);
+                }
+            } else {
+                shoppingItems = shoppingItems.filter(i => String(i.id) !== String(id));
+                render();
+                if (item) showToast(`"${item.name}" dihapus`);
+            }
+        }
 
-        // Tambah barang baru melalui form
-        form.addEventListener('submit', function(e) {
+        // Tambah barang baru
+        form.addEventListener('submit', async (e) => {
             e.preventDefault();
 
             const name = itemNameInput.value.trim();
@@ -481,18 +568,34 @@
             // Cek apakah barang dengan nama persis sudah ada
             const existing = shoppingItems.find(i => i.name.toLowerCase() === name.toLowerCase());
             if (existing) {
-                existing.qty += qty;
-                existing.price = price; // Perbarui harga terbaru
+                const newQty = (existing.qty || 1) + qty;
+                if (db && currentUser) {
+                    const itemRef = doc(db, 'artifacts', appId, 'users', userId, 'shopping_items', String(existing.id));
+                    await updateDoc(itemRef, { qty: newQty, price: price });
+                } else {
+                    existing.qty = newQty;
+                    existing.price = price;
+                    render();
+                }
                 showToast(`Jumlah "${existing.name}" ditambah ${qty}`);
             } else {
-                shoppingItems.unshift({
-                    id: Date.now(),
+                const newItem = {
                     name: name,
                     qty: qty,
                     price: price,
-                    isBought: false
-                });
-                showToast(`"${name}" berhasil ditambahkan`);
+                    isBought: false,
+                    createdAt: Date.now()
+                };
+
+                if (db && currentUser) {
+                    const itemsCol = collection(db, 'artifacts', appId, 'users', userId, 'shopping_items');
+                    await addDoc(itemsCol, newItem);
+                } else {
+                    newItem.id = Date.now().toString();
+                    shoppingItems.unshift(newItem);
+                    render();
+                }
+                showToast(`"${name}" berhasil disimpan!`);
             }
 
             // Reset input form
@@ -500,8 +603,6 @@
             itemQtyInput.value = '1';
             itemPriceInput.value = '';
             itemNameInput.focus();
-
-            render();
         });
 
         // Hitung dan update status batas anggaran
@@ -548,19 +649,57 @@
         }
 
         // Listener input anggaran
-        budgetInput.addEventListener('input', function(e) {
-            budgetLimit = parseFloat(e.target.value) || 0;
+        budgetInput.addEventListener('change', async (e) => {
+            const val = parseFloat(e.target.value) || 0;
+            budgetLimit = val;
             render();
+
+            if (db && currentUser) {
+                try {
+                    const budgetRef = doc(db, 'artifacts', appId, 'users', userId, 'settings', 'budget');
+                    await setDoc(budgetRef, { limit: budgetLimit, initialized: true }, { merge: true });
+                } catch (err) {
+                    console.error("Gagal simpan anggaran:", err);
+                }
+            }
         });
 
         // Muat Data Contoh
-        window.loadSampleData = function() {
-            shoppingItems = JSON.parse(JSON.stringify(DEFAULT_SAMPLE_ITEMS));
-            budgetLimit = 200000;
-            budgetInput.value = budgetLimit;
-            showToast('Data contoh berhasil dimuat!');
-            render();
-        };
+        async function loadSampleData() {
+            if (db && currentUser) {
+                try {
+                    // Hapus data lama jika ada
+                    const delPromises = shoppingItems.map(item => 
+                        deleteDoc(doc(db, 'artifacts', appId, 'users', userId, 'shopping_items', String(item.id)))
+                    );
+                    await Promise.all(delPromises);
+
+                    // Masukkan data contoh
+                    const itemsCol = collection(db, 'artifacts', appId, 'users', userId, 'shopping_items');
+                    for (const item of DEFAULT_SAMPLE_ITEMS) {
+                        await addDoc(itemsCol, {
+                            ...item,
+                            createdAt: Date.now() + Math.random() * 50
+                        });
+                    }
+
+                    // Update budget
+                    const budgetRef = doc(db, 'artifacts', appId, 'users', userId, 'settings', 'budget');
+                    await setDoc(budgetRef, { limit: 200000, initialized: true }, { merge: true });
+                    budgetLimit = 200000;
+                    budgetInput.value = 200000;
+                    showToast('Data contoh berhasil dimuat!');
+                } catch (err) {
+                    console.error("Gagal muat contoh:", err);
+                }
+            } else {
+                shoppingItems = DEFAULT_SAMPLE_ITEMS.map((item, idx) => ({ ...item, id: (Date.now() + idx).toString() }));
+                budgetLimit = 200000;
+                budgetInput.value = budgetLimit;
+                render();
+                showToast('Data contoh berhasil dimuat!');
+            }
+        }
 
         // Filter Buttons
         document.querySelectorAll('.filter-btn').forEach(btn => {
@@ -574,8 +713,9 @@
             });
         });
 
-        // Tombol Muat Contoh di Toolbar
+        // Tombol Muat Contoh
         document.getElementById('btn-load-sample').addEventListener('click', loadSampleData);
+        document.getElementById('btn-empty-sample').addEventListener('click', loadSampleData);
 
         // Modal Konfirmasi Hapus Semua
         const confirmModal = document.getElementById('confirm-modal');
@@ -595,32 +735,111 @@
             confirmModal.classList.add('hidden');
         });
 
-        modalConfirmBtn.addEventListener('click', () => {
-            shoppingItems = [];
+        modalConfirmBtn.addEventListener('click', async () => {
             confirmModal.classList.add('hidden');
-            showToast('Semua belanjaan telah dihapus');
-            render();
-        });
-
-        // Inisialisasi saat pertama kali dimuat
-        window.addEventListener('DOMContentLoaded', () => {
-            const savedItems = localStorage.getItem('shopping_list_items');
-            const savedBudget = localStorage.getItem('shopping_list_budget');
-
-            if (savedItems && JSON.parse(savedItems).length > 0) {
-                shoppingItems = JSON.parse(savedItems);
+            if (db && currentUser) {
+                try {
+                    const delPromises = shoppingItems.map(item => 
+                        deleteDoc(doc(db, 'artifacts', appId, 'users', userId, 'shopping_items', String(item.id)))
+                    );
+                    await Promise.all(delPromises);
+                    showToast('Semua belanjaan telah dihapus');
+                } catch (err) {
+                    console.error("Gagal hapus semua:", err);
+                }
             } else {
-                // Tampilkan data contoh secara langsung agar pengguna langsung melihat tampilan & perhitungan
-                shoppingItems = JSON.parse(JSON.stringify(DEFAULT_SAMPLE_ITEMS));
+                shoppingItems = [];
+                render();
+                showToast('Semua belanjaan telah dihapus');
             }
-
-            if (savedBudget !== null) {
-                budgetLimit = parseFloat(savedBudget) || 200000;
-            }
-            budgetInput.value = budgetLimit;
-
-            render();
         });
+
+        // Setup real-time listener Firestore
+        function setupFirestoreListeners() {
+            if (!db || !currentUser) return;
+
+            // 1. Dengarkan daftar barang belanjaan
+            const itemsCol = collection(db, 'artifacts', appId, 'users', userId, 'shopping_items');
+            onSnapshot(itemsCol, (snapshot) => {
+                const loaded = [];
+                snapshot.forEach(docSnap => {
+                    loaded.push({ id: docSnap.id, ...docSnap.data() });
+                });
+                // Urutkan berdasarkan waktu buat
+                loaded.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                shoppingItems = loaded;
+                render();
+            }, (error) => {
+                console.error("Firestore items error:", error);
+                syncStatus.textContent = 'Gagal sinkron barang';
+                syncIndicator.className = 'w-2 h-2 rounded-full bg-rose-400';
+            });
+
+            // 2. Dengarkan data pengaturan anggaran
+            const budgetRef = doc(db, 'artifacts', appId, 'users', userId, 'settings', 'budget');
+            onSnapshot(budgetRef, async (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    budgetLimit = data.limit ?? 200000;
+                    budgetInput.value = budgetLimit;
+                    render();
+                } else {
+                    // Pengguna baru pertama kali: inisialisasi contoh dan simpan ke Cloud
+                    await loadSampleData();
+                }
+            }, (error) => {
+                console.error("Firestore budget error:", error);
+            });
+        }
+
+        // Inisialisasi Firebase & Autentikasi
+        async function initStorage() {
+            try {
+                if (typeof __firebase_config === 'undefined') {
+                    // Fallback jika dibuka di luar environment yang memiliki config
+                    syncStatus.textContent = 'Mode Lokal Aktif';
+                    syncIndicator.className = 'w-2 h-2 rounded-full bg-amber-400';
+                    userIdDisplay.textContent = 'Tamu (Lokal)';
+                    shoppingItems = DEFAULT_SAMPLE_ITEMS.map((item, idx) => ({ ...item, id: (Date.now() + idx).toString() }));
+                    budgetInput.value = budgetLimit;
+                    render();
+                    return;
+                }
+
+                const firebaseConfig = JSON.parse(__firebase_config);
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                // Autentikasi wajib diselesaikan sebelum query
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                currentUser = auth.currentUser;
+                if (!currentUser) return;
+
+                userId = currentUser.uid;
+                userIdDisplay.textContent = userId;
+                syncStatus.textContent = 'Tersimpan di Cloud';
+                syncIndicator.className = 'w-2 h-2 rounded-full bg-emerald-400';
+
+                setupFirestoreListeners();
+            } catch (err) {
+                console.error("Inisialisasi Cloud gagal:", err);
+                syncStatus.textContent = 'Mode Offline';
+                syncIndicator.className = 'w-2 h-2 rounded-full bg-amber-400';
+                userIdDisplay.textContent = 'Offline';
+                shoppingItems = DEFAULT_SAMPLE_ITEMS.map((item, idx) => ({ ...item, id: (Date.now() + idx).toString() }));
+                budgetInput.value = budgetLimit;
+                render();
+            }
+        }
+
+        // Mulai aplikasi
+        window.addEventListener('DOMContentLoaded', initStorage);
     </script>
 </body>
 </html>
