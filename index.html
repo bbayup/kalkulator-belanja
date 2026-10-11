@@ -71,8 +71,8 @@
                         <i class="fa-regular fa-copy ml-0.5 text-[10px]"></i>
                     </button>
                     <!-- Tombol Pengaturan Cloud untuk GitHub Pages -->
-                    <button type="button" id="btn-open-cloud-config" title="Atur Koneksi Cloud Pribadi"
-                        class="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-400/20 hover:bg-amber-400/30 text-amber-200 border border-amber-300/30 active:scale-95 transition-all rounded-lg font-medium cursor-pointer">
+                    <button type="button" id="btn-open-cloud-modal" title="Atur Koneksi Cloud Pribadi"
+                        class="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-400 text-amber-950 font-bold active:scale-95 transition-all rounded-lg shadow-sm hover:bg-amber-300 cursor-pointer">
                         <i class="fa-solid fa-cloud"></i>
                         <span>Atur Cloud</span>
                     </button>
@@ -82,6 +82,23 @@
             <div class="absolute -right-6 -bottom-8 w-28 h-28 bg-white/10 rounded-full blur-xl pointer-events-none"></div>
             <div class="absolute -left-6 -top-8 w-28 h-28 bg-white/10 rounded-full blur-xl pointer-events-none"></div>
         </header>
+
+        <!-- Banner Mencolok Mode Lokal (GitHub Pages) -->
+        <div id="local-mode-banner" class="hidden anim-fade-in bg-amber-50 border-2 border-amber-400 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <i class="fa-solid fa-cloud-arrow-up text-lg"></i>
+                </div>
+                <div>
+                    <h4 class="font-bold text-amber-950 text-sm">Mode Lokal Aktif</h4>
+                    <p class="text-xs text-amber-800">Data tersimpan di HP/Browser ini. Ingin sinkron ke Cloud Firebase?</p>
+                </div>
+            </div>
+            <button type="button" id="btn-banner-cloud" 
+                class="w-full sm:w-auto px-4 py-2 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold rounded-xl text-xs shadow-md shadow-amber-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer">
+                <i class="fa-solid fa-gear"></i> Hubungkan Cloud Sekarang
+            </button>
+        </div>
 
         <!-- Kartu Target Anggaran (Budget Tracker) -->
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5">
@@ -893,16 +910,21 @@
         // Modal Pengaturan Cloud UI
         const cloudModal = document.getElementById('cloud-modal');
         const btnOpenCloudModal = document.getElementById('btn-open-cloud-modal');
+        const btnBannerCloud = document.getElementById('btn-banner-cloud');
+        const localModeBanner = document.getElementById('local-mode-banner');
         const btnCloseCloudModal = document.getElementById('btn-close-cloud-modal');
         const btnSaveCloudConfig = document.getElementById('btn-save-cloud-config');
         const btnClearCloudConfig = document.getElementById('btn-clear-cloud-config');
         const firebaseConfigInput = document.getElementById('firebase-config-input');
 
-        btnOpenCloudModal.addEventListener('click', () => {
+        const openCloudDialog = () => {
             const savedCfg = localStorage.getItem(STORAGE_KEY_CONFIG);
             if (savedCfg) firebaseConfigInput.value = savedCfg;
             cloudModal.classList.remove('hidden');
-        });
+        };
+
+        if (btnOpenCloudModal) btnOpenCloudModal.addEventListener('click', openCloudDialog);
+        if (btnBannerCloud) btnBannerCloud.addEventListener('click', openCloudDialog);
 
         btnCloseCloudModal.addEventListener('click', () => {
             cloudModal.classList.add('hidden');
@@ -959,6 +981,7 @@
                     syncStatus.textContent = 'Mode Lokal (Tersimpan di HP/Browser)';
                     syncIndicator.className = 'w-2 h-2 rounded-full bg-amber-400';
                     userIdDisplay.textContent = 'Lokal (Browser)';
+                    if (localModeBanner) localModeBanner.classList.remove('hidden');
                     loadLocalState();
                     render();
                     return;
@@ -982,6 +1005,7 @@
                 userIdDisplay.textContent = userId;
                 syncStatus.textContent = 'Tersimpan di Cloud Firebase';
                 syncIndicator.className = 'w-2 h-2 rounded-full bg-emerald-400';
+                if (localModeBanner) localModeBanner.classList.add('hidden');
 
                 setupFirestoreListeners();
             } catch (err) {
@@ -989,6 +1013,7 @@
                 syncStatus.textContent = 'Mode Lokal (Offline)';
                 syncIndicator.className = 'w-2 h-2 rounded-full bg-amber-400';
                 userIdDisplay.textContent = 'Offline';
+                if (localModeBanner) localModeBanner.classList.remove('hidden');
                 loadLocalState();
                 render();
             }
