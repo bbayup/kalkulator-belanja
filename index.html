@@ -70,6 +70,12 @@
                         <span id="user-id-display">Memuat ID...</span>
                         <i class="fa-regular fa-copy ml-0.5 text-[10px]"></i>
                     </button>
+                    <!-- Tombol Pengaturan Cloud untuk GitHub Pages -->
+                    <button type="button" id="btn-open-cloud-config" title="Atur Koneksi Cloud Pribadi"
+                        class="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-400/20 hover:bg-amber-400/30 text-amber-200 border border-amber-300/30 active:scale-95 transition-all rounded-lg font-medium cursor-pointer">
+                        <i class="fa-solid fa-cloud"></i>
+                        <span>Atur Cloud</span>
+                    </button>
                 </div>
             </div>
             <!-- Dekorasi latar belakang header -->
@@ -250,6 +256,57 @@
         </div>
     </div>
 
+    <!-- Modal Konfigurasi Firebase Cloud (Untuk Pengguna GitHub Pages) -->
+    <div id="cloud-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 anim-fade-in border border-slate-100 max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm">
+                        <i class="fa-solid fa-cloud"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-slate-800 text-base">Hubungkan Cloud Pribadi</h3>
+                        <p class="text-xs text-slate-400">Sinkronkan data ke Firebase gratis Anda</p>
+                    </div>
+                </div>
+                <button type="button" id="btn-close-cloud-modal" class="text-slate-400 hover:text-slate-600 p-1">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+                Agar data tersimpan di Cloud saat diakses lewat GitHub Pages, tempelkan konfigurasi <strong>Firebase SDK</strong> (JSON) dari console.firebase.google.com di bawah ini:
+            </p>
+
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Objek Konfigurasi Firebase (JSON):</label>
+                    <textarea id="firebase-config-input" rows="7" placeholder='{\n  "apiKey": "AIzaSy...",\n  "authDomain": "proyek-anda.firebaseapp.com",\n  "projectId": "proyek-anda",\n  "storageBucket": "proyek-anda.appspot.com",\n  "messagingSenderId": "...",\n  "appId": "..."\n}'
+                        class="w-full p-3 font-mono text-xs bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none"></textarea>
+                </div>
+
+                <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-800 space-y-1">
+                    <p class="font-semibold flex items-center gap-1">
+                        <i class="fa-solid fa-circle-info"></i> Petunjuk Cepat:
+                    </p>
+                    <p>1. Buka <strong>console.firebase.google.com</strong> &rarr; Buat Proyek Gratis.</p>
+                    <p>2. Aktifkan <strong>Build &rarr; Authentication &rarr; Anonymous</strong>.</p>
+                    <p>3. Aktifkan <strong>Build &rarr; Firestore Database</strong> (Mode Uji / Test Mode).</p>
+                    <p>4. Buka Project Settings &rarr; Tambah Web App (&lt;/&gt;) &rarr; Salin isi <code>firebaseConfig</code> ke kotak di atas.</p>
+                </div>
+            </div>
+
+            <div class="flex gap-2 mt-5">
+                <button type="button" id="btn-clear-cloud-config" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors">
+                    Putuskan (Pakai Lokal)
+                </button>
+                <button type="button" id="btn-save-cloud-config" class="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-600/20 transition-colors">
+                    Simpan & Sambungkan
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast Notification -->
     <div id="toast" class="fixed bottom-5 right-5 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-lg text-xs font-semibold flex items-center gap-2 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none z-50">
         <i class="fa-solid fa-circle-check text-emerald-400" id="toast-icon"></i>
@@ -268,6 +325,11 @@
         let currentUser = null;
         let userId = null;
 
+        // Kunci penyimpanan lokal browser
+        const STORAGE_KEY_ITEMS = 'belanja_items_data';
+        const STORAGE_KEY_BUDGET = 'belanja_budget_data';
+        const STORAGE_KEY_CONFIG = 'custom_firebase_config';
+
         // Data Contoh Awal
         const DEFAULT_SAMPLE_ITEMS = [
             { name: 'Beras Premium 5kg', qty: 1, price: 74000, isBought: true },
@@ -280,6 +342,34 @@
         let shoppingItems = [];
         let budgetLimit = 200000;
         let activeFilter = 'all';
+
+        // Helper Penyimpanan Lokal Cadangan (Local Storage)
+        function saveLocalState() {
+            try {
+                localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(shoppingItems));
+                localStorage.setItem(STORAGE_KEY_BUDGET, String(budgetLimit));
+            } catch (err) {
+                console.warn('Gagal menyimpan ke localStorage:', err);
+            }
+        }
+
+        function loadLocalState() {
+            try {
+                const storedItems = localStorage.getItem(STORAGE_KEY_ITEMS);
+                const storedBudget = localStorage.getItem(STORAGE_KEY_BUDGET);
+                if (storedItems) {
+                    shoppingItems = JSON.parse(storedItems);
+                } else {
+                    shoppingItems = DEFAULT_SAMPLE_ITEMS.map((item, idx) => ({ ...item, id: (Date.now() + idx).toString() }));
+                }
+                if (storedBudget !== null) {
+                    budgetLimit = parseFloat(storedBudget) || 200000;
+                }
+            } catch (err) {
+                shoppingItems = DEFAULT_SAMPLE_ITEMS.map((item, idx) => ({ ...item, id: (Date.now() + idx).toString() }));
+            }
+            budgetInput.value = budgetLimit;
+        }
 
         // DOM Elements
         const form = document.getElementById('item-form');
@@ -512,6 +602,7 @@
                     }
                 } else {
                     item.qty = newQty;
+                    saveLocalState();
                     render();
                 }
             }
@@ -531,6 +622,7 @@
                 }
             } else {
                 item.isBought = !item.isBought;
+                saveLocalState();
                 render();
             }
         }
@@ -548,6 +640,7 @@
                 }
             } else {
                 shoppingItems = shoppingItems.filter(i => String(i.id) !== String(id));
+                saveLocalState();
                 render();
                 if (item) showToast(`"${item.name}" dihapus`);
             }
@@ -575,6 +668,7 @@
                 } else {
                     existing.qty = newQty;
                     existing.price = price;
+                    saveLocalState();
                     render();
                 }
                 showToast(`Jumlah "${existing.name}" ditambah ${qty}`);
@@ -593,6 +687,7 @@
                 } else {
                     newItem.id = Date.now().toString();
                     shoppingItems.unshift(newItem);
+                    saveLocalState();
                     render();
                 }
                 showToast(`"${name}" berhasil disimpan!`);
@@ -652,6 +747,7 @@
         budgetInput.addEventListener('change', async (e) => {
             const val = parseFloat(e.target.value) || 0;
             budgetLimit = val;
+            saveLocalState();
             render();
 
             if (db && currentUser) {
@@ -696,6 +792,7 @@
                 shoppingItems = DEFAULT_SAMPLE_ITEMS.map((item, idx) => ({ ...item, id: (Date.now() + idx).toString() }));
                 budgetLimit = 200000;
                 budgetInput.value = budgetLimit;
+                saveLocalState();
                 render();
                 showToast('Data contoh berhasil dimuat!');
             }
@@ -749,6 +846,7 @@
                 }
             } else {
                 shoppingItems = [];
+                saveLocalState();
                 render();
                 showToast('Semua belanjaan telah dihapus');
             }
@@ -792,21 +890,80 @@
             });
         }
 
+        // Modal Pengaturan Cloud UI
+        const cloudModal = document.getElementById('cloud-modal');
+        const btnOpenCloudModal = document.getElementById('btn-open-cloud-modal');
+        const btnCloseCloudModal = document.getElementById('btn-close-cloud-modal');
+        const btnSaveCloudConfig = document.getElementById('btn-save-cloud-config');
+        const btnClearCloudConfig = document.getElementById('btn-clear-cloud-config');
+        const firebaseConfigInput = document.getElementById('firebase-config-input');
+
+        btnOpenCloudModal.addEventListener('click', () => {
+            const savedCfg = localStorage.getItem(STORAGE_KEY_CONFIG);
+            if (savedCfg) firebaseConfigInput.value = savedCfg;
+            cloudModal.classList.remove('hidden');
+        });
+
+        btnCloseCloudModal.addEventListener('click', () => {
+            cloudModal.classList.add('hidden');
+        });
+
+        btnSaveCloudConfig.addEventListener('click', () => {
+            const rawVal = firebaseConfigInput.value.trim();
+            if (!rawVal) {
+                showToast('Masukkan konfigurasi JSON terlebih dahulu', false);
+                return;
+            }
+            try {
+                // Validasi format JSON
+                JSON.parse(rawVal);
+                localStorage.setItem(STORAGE_KEY_CONFIG, rawVal);
+                cloudModal.classList.add('hidden');
+                showToast('Konfigurasi tersimpan! Memuat ulang...', true);
+                setTimeout(() => window.location.reload(), 1000);
+            } catch (e) {
+                showToast('Format JSON tidak valid. Periksa tanda kurung kurawal.', false);
+            }
+        });
+
+        btnClearCloudConfig.addEventListener('click', () => {
+            localStorage.removeItem(STORAGE_KEY_CONFIG);
+            cloudModal.classList.add('hidden');
+            showToast('Konfigurasi Cloud dibersihkan. Kembali ke mode lokal.');
+            setTimeout(() => window.location.reload(), 800);
+        });
+
         // Inisialisasi Firebase & Autentikasi
         async function initStorage() {
             try {
-                if (typeof __firebase_config === 'undefined') {
-                    // Fallback jika dibuka di luar environment yang memiliki config
-                    syncStatus.textContent = 'Mode Lokal Aktif';
+                let firebaseConfig = null;
+
+                // 1. Cek apakah ada konfigurasi lingkungan bawaan
+                if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+                    firebaseConfig = JSON.parse(__firebase_config);
+                } 
+                // 2. Cek apakah pengguna menyimpan konfigurasi mandiri (untuk GitHub Pages)
+                else {
+                    const customSaved = localStorage.getItem(STORAGE_KEY_CONFIG);
+                    if (customSaved) {
+                        try {
+                            firebaseConfig = JSON.parse(customSaved);
+                        } catch (e) {
+                            console.error('Format custom config salah:', e);
+                        }
+                    }
+                }
+
+                // Jika tidak ada konfigurasi, aktifkan Mode Lokal dengan LocalStorage aktif
+                if (!firebaseConfig) {
+                    syncStatus.textContent = 'Mode Lokal (Tersimpan di HP/Browser)';
                     syncIndicator.className = 'w-2 h-2 rounded-full bg-amber-400';
-                    userIdDisplay.textContent = 'Tamu (Lokal)';
-                    shoppingItems = DEFAULT_SAMPLE_ITEMS.map((item, idx) => ({ ...item, id: (Date.now() + idx).toString() }));
-                    budgetInput.value = budgetLimit;
+                    userIdDisplay.textContent = 'Lokal (Browser)';
+                    loadLocalState();
                     render();
                     return;
                 }
 
-                const firebaseConfig = JSON.parse(__firebase_config);
                 const app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
@@ -823,17 +980,16 @@
 
                 userId = currentUser.uid;
                 userIdDisplay.textContent = userId;
-                syncStatus.textContent = 'Tersimpan di Cloud';
+                syncStatus.textContent = 'Tersimpan di Cloud Firebase';
                 syncIndicator.className = 'w-2 h-2 rounded-full bg-emerald-400';
 
                 setupFirestoreListeners();
             } catch (err) {
                 console.error("Inisialisasi Cloud gagal:", err);
-                syncStatus.textContent = 'Mode Offline';
+                syncStatus.textContent = 'Mode Lokal (Offline)';
                 syncIndicator.className = 'w-2 h-2 rounded-full bg-amber-400';
                 userIdDisplay.textContent = 'Offline';
-                shoppingItems = DEFAULT_SAMPLE_ITEMS.map((item, idx) => ({ ...item, id: (Date.now() + idx).toString() }));
-                budgetInput.value = budgetLimit;
+                loadLocalState();
                 render();
             }
         }
